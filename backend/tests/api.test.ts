@@ -810,6 +810,73 @@ describe("twCIN API — correções da auditoria (fase 1)", () => {
     assert.equal(depois.status, 400, "não pode mais sair");
   });
 
+  it("logout invalida o token copiado e logout-all encerra todas as sessões", async () => {
+    await setup();
+    const tokenCopiado = cookie;
+
+    const logout = await app!.inject({ method: "POST", url: "/api/auth/logout", headers: { cookie: tokenCopiado } });
+    assert.equal(logout.statusCode, 200);
+    const reuso = await app!.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: tokenCopiado } });
+    assert.equal(reuso.statusCode, 401, "token não vale mais depois do logout");
+
+    const login1 = await app!.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "tecnico1", password: "tecnico1-nova-senha-2026" }
+    });
+    const login2 = await app!.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { username: "tecnico1", password: "tecnico1-nova-senha-2026" }
+    });
+    const c1 = extractCookie(login1.headers["set-cookie"]);
+    const c2 = extractCookie(login2.headers["set-cookie"]);
+    await app!.inject({ method: "POST", url: "/api/auth/logout-all", headers: { cookie: c1 } });
+    const outro = await app!.inject({ method: "GET", url: "/api/auth/me", headers: { cookie: c2 } });
+    assert.equal(outro.statusCode, 401);
+  });
+
+  it("exige senha de no mínimo 8 caracteres também ao criar usuário", async () => {
+    await setup();
+    const curta = await call("POST", "/api/users", { full_name: "Fulano", username: "fulano", password: "123456" });
+    assert.equal(curta.status, 400);
+  });
+
+  it("pagina a auditoria por cursor", async () => {
+    await setup();
+    for (let i = 0; i < 5; i++) {
+      await call("POST", "/api/catalogs/sectors", { name: `Setor ${i}` });
+    }
+    const p1 = await call("GET", "/api/audit?entity=catalog_sector&limit=2");
+    assert.equal(p1.body.items.length, 2);
+    assert.ok(p1.body.next_before_id);
+    const p2 = await call("GET", `/api/audit?entity=catalog_sector&limit=2&before_id=${p1.body.next_before_id}`);
+    const p3 = await call("GET", `/api/audit?entity=catalog_sector&limit=2&before_id=${p2.body.next_before_id}`);
+    const ids = [...p1.body.items, ...p2.body.items, ...p3.body.items].map((i: { id: number }) => i.id);
+    assert.equal(new Set(ids).size, 5);
+    assert.equal(p3.body.next_before_id, null);
+  });
+
+  it("gera backup do banco somente com a senha correta", async () => {
+    await setup();
+    const errada = await app!.inject({
+      method: "POST",
+      url: "/api/backup",
+      headers: { cookie },
+      payload: { password: "senha-errada" }
+    });
+    assert.equal(errada.statusCode, 400);
+
+    const ok = await app!.inject({
+      method: "POST",
+      url: "/api/backup",
+      headers: { cookie },
+      payload: { password: "tecnico1-nova-senha-2026" }
+    });
+    assert.equal(ok.statusCode, 200);
+    assert.equal(ok.rawPayload.subarray(0, 15).toString(), "SQLite format 3");
+  });
+
   it("não deixa X-Forwarded-For forjado contornar o rate limit de login por padrão", async () => {
     await setup({ loginRateLimitMax: 3 });
 

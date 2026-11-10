@@ -12,6 +12,7 @@ import { runMigrations } from "./db/migrations.js";
 import { seedInitialData } from "./db/seed.js";
 import { registerAuditRoutes } from "./routes/audit.routes.js";
 import { registerAuthRoutes } from "./routes/auth.routes.js";
+import { registerBackupRoutes } from "./routes/backup.routes.js";
 import { registerCatalogRoutes } from "./routes/catalogs.routes.js";
 import { registerMovementRoutes } from "./routes/movements.routes.js";
 import { registerSettingsRoutes } from "./routes/settings.routes.js";
@@ -113,6 +114,7 @@ export async function buildApp(options: BuildAppOptions): Promise<{
   registerAuditRoutes(app, db, requireAuth);
   registerSettingsRoutes(app, db, requireAuth);
   registerSyncRoutes(app, db, requireAuth);
+  registerBackupRoutes(app, db, requireAuth);
 
   app.addHook("onClose", async () => {
     db.close();

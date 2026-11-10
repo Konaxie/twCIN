@@ -13,7 +13,51 @@ function ensureColumn(
   }
 }
 
+/**
+ * Migrations versionadas. A versão 1 é o esquema-base (função idempotente abaixo, que também
+ * atualiza bancos antigos coluna a coluna). Mudanças futuras de esquema ou de dados entram como
+ * novas versões nesta lista — nunca editando uma versão já publicada. Cada uma roda uma única vez,
+ * dentro de uma transação, e fica registrada em `schema_migrations`.
+ */
+const MIGRATIONS: Array<{ version: number; name: string; up: (db: DatabaseSync) => void }> = [
+  { version: 1, name: "esquema-base", up: applyBaselineSchema }
+];
+
 export function runMigrations(db: DatabaseSync): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+  `);
+
+  // O esquema-base é idempotente e sempre roda: bancos criados antes do controle de versão
+  // recebem as colunas novas por ensureColumn.
+  applyBaselineSchema(db);
+
+  const applied = new Set(
+    (db.prepare("SELECT version FROM schema_migrations").all() as Array<{ version: number }>).map((r) => r.version)
+  );
+  for (const migration of MIGRATIONS) {
+    if (applied.has(migration.version)) continue;
+    db.exec("BEGIN IMMEDIATE;");
+    try {
+      if (migration.version !== 1) migration.up(db);
+      db.prepare("INSERT INTO schema_migrations (version, name, applied_at) VALUES (?, ?, ?)").run(
+        migration.version,
+        migration.name,
+        new Date().toISOString()
+      );
+      db.exec("COMMIT;");
+    } catch (err) {
+      db.exec("ROLLBACK;");
+      throw err;
+    }
+  }
+}
+
+function applyBaselineSchema(db: DatabaseSync): void {
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -111,6 +155,11 @@ export function runMigrations(db: DatabaseSync): void {
       after_json TEXT,
       ip_address TEXT NOT NULL DEFAULT '',
       created_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS revoked_sessions (
+      jti TEXT PRIMARY KEY,
+      expires_at TEXT NOT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_movements_status ON movements(status, out_at DESC);

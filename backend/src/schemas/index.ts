@@ -1,5 +1,8 @@
 import { z } from "zod";
 
+// Mesma política de senha em todo o sistema (antes: 8 no setup/troca e 6 na criação/redefinição).
+const passwordSchema = z.string().min(8, "A senha deve ter no mínimo 8 caracteres.").max(128);
+
 export const loginSchema = z.object({
   username: z.string().trim().min(2).max(60),
   password: z.string().min(1).max(128)
@@ -50,7 +53,7 @@ export const createUserSchema = z.object({
     .min(2)
     .max(50)
     .regex(/^[a-zA-Z0-9._-]+$/, "Usuário deve conter apenas letras, números, ponto, hífen ou sublinhado."),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres.").max(128),
+  password: passwordSchema,
   must_change_password: z.boolean().optional().default(true)
 });
 
@@ -63,7 +66,7 @@ export const updateUserSchema = z.object({
     .max(50)
     .regex(/^[a-zA-Z0-9._-]+$/, "Usuário deve conter apenas letras, números, ponto, hífen ou sublinhado.")
     .optional(),
-  password: z.string().min(6, "A senha deve ter no mínimo 6 caracteres.").max(128).optional(),
+  password: passwordSchema.optional(),
   active: z.boolean().optional(),
   must_change_password: z.boolean().optional()
 });

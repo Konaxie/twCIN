@@ -61,6 +61,14 @@ export function loadEnv(): EnvConfig {
   const host = process.env.HOST?.trim() || "0.0.0.0";
   const corsOrigin = process.env.CORS_ORIGIN?.trim() || "http://localhost:5173";
   const cookieSecure = process.env.COOKIE_SECURE === "true";
+  if (process.env.NODE_ENV === "production" && !cookieSecure) {
+    console.warn(
+      "[twCIN] AVISO: NODE_ENV=production com COOKIE_SECURE=false. Em produção, sirva o sistema por HTTPS e defina COOKIE_SECURE=true."
+    );
+  }
+  if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET?.trim()) {
+    console.warn("[twCIN] AVISO: JWT_SECRET não definido; usando chave gerada em arquivo local (backend/data/.jwt_secret).");
+  }
 
   return {
     port: Number.isFinite(port) ? port : 3333,
