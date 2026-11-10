@@ -1,0 +1,30 @@
+# Dependencies and build outputs
+node_modules/
+dist/
+dev-dist/
+backend/dist/
+frontend/dist/
+frontend/dev-dist/
+*.tsbuildinfo
+
+# Local runtime data, database, and secrets
+backend/data/
+*.db
+*.db-wal
+*.db-shm
+.jwt_secret
+
+# Environment files (keep .env.example)
+.env
+.env.*
+backend/.env
+backend/.env.*
+frontend/.env
+frontend/.env.*
+!.env.example
+!backend/.env.example
+
+# Logs and OS artifacts
+*.log
+.DS_Store
+Thumbs.db

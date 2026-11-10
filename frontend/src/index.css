@@ -1,0 +1,243 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light dark;
+
+  --bg-light: #f4f6fa;
+  --bg-dark: #090e1a;
+  --surface-light: #ffffff;
+  --surface-dark: #101829;
+  --surface-alt-light: #edf1f7;
+  --surface-alt-dark: #172238;
+  --border-light: #d6deeb;
+  --border-dark: #263554;
+  --text-light: #0f172a;
+  --text-dark: #f1f5f9;
+  --text-muted-light: #475569;
+  --text-muted-dark: #94a3b8;
+
+  --brand-light: #002d6b;
+  --brand-dark: #4f8df5;
+  --brand-hover-light: #003d91;
+  --brand-hover-dark: #6ba0f8;
+  --brand-fg-light: #ffffff;
+  --brand-fg-dark: #071224;
+  --brand-soft-light: rgba(0, 45, 107, 0.1);
+  --brand-soft-dark: rgba(79, 141, 245, 0.16);
+
+  --cin-red-light: #c81018;
+  --cin-red-dark: #f25f66;
+  --cin-red-soft-light: rgba(200, 16, 24, 0.1);
+  --cin-red-soft-dark: rgba(242, 95, 102, 0.16);
+
+  --ok-light: #15803d;
+  --ok-dark: #4ade80;
+  --ok-soft-light: rgba(21, 128, 61, 0.11);
+  --ok-soft-dark: rgba(74, 222, 128, 0.16);
+
+  --warn-light: #b45309;
+  --warn-dark: #fbbf24;
+  --warn-soft-light: rgba(180, 83, 9, 0.11);
+  --warn-soft-dark: rgba(251, 191, 36, 0.16);
+
+  /* Fallback light defaults */
+  --bg: var(--bg-light);
+  --surface: var(--surface-light);
+  --surface-alt: var(--surface-alt-light);
+  --border: var(--border-light);
+  --text: var(--text-light);
+  --text-muted: var(--text-muted-light);
+  --brand: var(--brand-light);
+  --brand-hover: var(--brand-hover-light);
+  --brand-fg: var(--brand-fg-light);
+  --brand-soft: var(--brand-soft-light);
+  --cin-red: var(--cin-red-light);
+  --cin-red-soft: var(--cin-red-soft-light);
+  --ok: var(--ok-light);
+  --ok-soft: var(--ok-soft-light);
+  --warn: var(--warn-light);
+  --warn-soft: var(--warn-soft-light);
+
+  @media (prefers-color-scheme: dark) {
+    --bg: var(--bg-dark);
+    --surface: var(--surface-dark);
+    --surface-alt: var(--surface-alt-dark);
+    --border: var(--border-dark);
+    --text: var(--text-dark);
+    --text-muted: var(--text-muted-dark);
+    --brand: var(--brand-dark);
+    --brand-hover: var(--brand-hover-dark);
+    --brand-fg: var(--brand-fg-dark);
+    --brand-soft: var(--brand-soft-dark);
+    --cin-red: var(--cin-red-dark);
+    --cin-red-soft: var(--cin-red-soft-dark);
+    --ok: var(--ok-dark);
+    --ok-soft: var(--ok-soft-dark);
+    --warn: var(--warn-dark);
+    --warn-soft: var(--warn-soft-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg: light-dark(var(--bg-light), var(--bg-dark));
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-alt: light-dark(var(--surface-alt-light), var(--surface-alt-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --text: light-dark(var(--text-light), var(--text-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --brand: light-dark(var(--brand-light), var(--brand-dark));
+    --brand-hover: light-dark(var(--brand-hover-light), var(--brand-hover-dark));
+    --brand-fg: light-dark(var(--brand-fg-light), var(--brand-fg-dark));
+    --brand-soft: light-dark(var(--brand-soft-light), var(--brand-soft-dark));
+    --cin-red: light-dark(var(--cin-red-light), var(--cin-red-dark));
+    --cin-red-soft: light-dark(var(--cin-red-soft-light), var(--cin-red-soft-dark));
+    --ok: light-dark(var(--ok-light), var(--ok-dark));
+    --ok-soft: light-dark(var(--ok-soft-light), var(--ok-soft-dark));
+    --warn: light-dark(var(--warn-light), var(--warn-dark));
+    --warn-soft: light-dark(var(--warn-soft-light), var(--warn-soft-dark));
+  }
+}
+
+:root:has(> head > meta[name="color-scheme"][content="dark"]) {
+  color-scheme: dark;
+}
+
+:root:has(> head > meta[name="color-scheme"][content="light"]) {
+  color-scheme: light;
+}
+
+html {
+  accent-color: var(--brand);
+}
+
+body {
+  margin: 0;
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Native dialog scroll containment */
+dialog:modal {
+  overscroll-behavior: contain;
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+}
+
+dialog::backdrop {
+  background-color: rgba(2, 6, 23, 0.65);
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+/* Accessible focus rings */
+:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
+}
+
+/* Form controls */
+.tw-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background-color: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: max(1rem, 0.9375rem);
+  box-sizing: border-box;
+}
+
+.tw-textarea {
+  width: 100%;
+  min-height: 80px;
+  padding: 0.55rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--border);
+  background-color: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: max(1rem, 0.9375rem);
+  box-sizing: border-box;
+}
+
+@media (pointer: coarse) {
+  .tw-input {
+    min-height: 48px;
+  }
+}
+
+/* Responsive table wrapper */
+.table-wrapper {
+  overflow: auto;
+  max-inline-size: 100%;
+  container-type: inline-size;
+}
+
+@container (width < 640px) {
+  .responsive-table,
+  .responsive-table thead,
+  .responsive-table tbody,
+  .responsive-table tr,
+  .responsive-table th,
+  .responsive-table td {
+    display: block;
+  }
+
+  .responsive-table thead {
+    display: none;
+  }
+
+  .responsive-table tr {
+    margin-block-end: 0.75rem;
+    padding: 0.75rem;
+    border: 1px solid var(--border);
+    border-radius: 0.65rem;
+    background-color: var(--bg);
+  }
+
+  .responsive-table td {
+    padding: 0.2rem 0;
+    border: none;
+  }
+
+  .responsive-table td[data-label]::before {
+    content: attr(data-label) ": ";
+    font-weight: 600;
+    color: var(--text-muted);
+  }
+}
+
+/* Print / PDF styles */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  dialog.print-dialog {
+    position: static !important;
+    inset: auto !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    overflow: visible !important;
+  }
+
+  dialog.print-dialog::backdrop {
+    display: none !important;
+  }
+}
