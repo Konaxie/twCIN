@@ -312,7 +312,10 @@ export function useSyncData(
     install_location: string;
     received_by?: string;
     notes?: string;
-    out_at: string;
+    /** Ausente = o servidor usa a hora dele (evita relógio errado do aparelho). */
+    out_at?: string;
+    /** Ausente = prazo padrão; null = sem prazo. */
+    due_at?: string | null;
   }): Promise<void> => {
     if (!user) return;
     const client_uuid = crypto.randomUUID();
@@ -346,7 +349,8 @@ export function useSyncData(
       notes: payload.notes?.trim() || "",
       status: payload.movement_type === "instalacao_fixa" ? "fixo" : "ativo",
       version: 1,
-      out_at: payload.out_at,
+      out_at: payload.out_at ?? now,
+      due_at: payload.due_at ?? null,
       returned_at: null,
       registered_by_id: user.id,
       registered_by_name: user.full_name,
@@ -360,7 +364,8 @@ export function useSyncData(
     await queueMutation({
       type: "movement.create",
       client_uuid,
-      payload: { ...payload, client_uuid },
+      // Offline, a hora do aparelho é a melhor informação disponível.
+      payload: { ...payload, out_at: payload.out_at ?? now, client_uuid },
       optimistic: { table: "movements", record: optimistic }
     });
   };
@@ -378,6 +383,7 @@ export function useSyncData(
       received_by: string;
       notes: string;
       out_at: string;
+      due_at: string | null;
     }>
   ): Promise<void> => {
     if (!user) return;
@@ -420,7 +426,8 @@ export function useSyncData(
       try {
         await apiRequest<{ item: MovementItem }>(`/api/movements/${item.id}/return`, {
           method: "POST",
-          body: JSON.stringify({ returned_at: now, expected_version: item.version })
+          // Online, o servidor carimba a hora da devolução.
+          body: JSON.stringify({ expected_version: item.version })
         });
         await syncNow();
         return;
@@ -445,6 +452,46 @@ export function useSyncData(
       ...(item.id > 0 ? { entity_id: item.id } : { client_uuid: item.client_uuid }),
       payload: { returned_at: now, ...(item.id > 0 ? { expected_version: item.version } : {}) },
       optimistic: { table: "movements", record: updatedLocal }
+    });
+  };
+
+  const returnEquipmentToOwner = async (
+    item: CatalogEquipment,
+    input: { received_by: string; notes?: string }
+  ): Promise<void> => {
+    if (!user) return;
+    const now = new Date().toISOString();
+
+    if (navigator.onLine && item.id > 0) {
+      try {
+        await apiRequest<{ item: CatalogEquipment }>(`/api/catalogs/equipments/${item.id}/return-to-owner`, {
+          method: "POST",
+          body: JSON.stringify({ ...input, expected_version: item.version })
+        });
+        await syncNow();
+        return;
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+      }
+    }
+
+    const updatedLocal: CatalogEquipment = {
+      ...item,
+      condition_status: "devolvido_dono",
+      active: 0,
+      owner_returned_at: now,
+      owner_received_by: input.received_by.trim(),
+      owner_returned_by_name: user.full_name,
+      version: localNextVersion(item),
+      updated_at: now,
+      _pendingSync: true
+    };
+    await offlineDb.equipments.put(updatedLocal);
+    await queueMutation({
+      type: "equipment.return_to_owner",
+      ...(item.id > 0 ? { entity_id: item.id } : { client_uuid: item.client_uuid }),
+      payload: { ...input, returned_at: now, ...(item.id > 0 ? { expected_version: item.version } : {}) },
+      optimistic: { table: "equipments", record: updatedLocal }
     });
   };
 
@@ -510,6 +557,7 @@ export function useSyncData(
     createMovement,
     updateMovement,
     returnMovement,
+    returnEquipmentToOwner,
     createSector
   };
 }

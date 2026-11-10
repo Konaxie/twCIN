@@ -5,6 +5,7 @@ import type { FailedOpEntry } from "../offline/db";
 const OPERATION_LABELS: Record<FailedOpEntry["type"], string> = {
   "equipment.create": "Cadastro de equipamento",
   "equipment.update": "Edição de equipamento",
+  "equipment.return_to_owner": "Devolução ao dono",
   "movement.create": "Registro de movimentação",
   "movement.update": "Edição de movimentação",
   "movement.return": "Devolução",

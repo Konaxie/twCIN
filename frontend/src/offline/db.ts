@@ -13,6 +13,7 @@ import type {
 export type SyncOperationType =
   | "equipment.create"
   | "equipment.update"
+  | "equipment.return_to_owner"
   | "movement.create"
   | "movement.update"
   | "movement.return"

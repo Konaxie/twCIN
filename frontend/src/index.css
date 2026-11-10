@@ -138,7 +138,9 @@ dialog::backdrop {
   outline-offset: 2px;
 }
 
-/* Form controls */
+/* Form controls (em @layer components: utilitários como pl-9 precisam vencer o padding padrão,
+   senão o ícone de busca fica por cima do texto) */
+@layer components {
 .tw-input {
   width: 100%;
   min-height: 44px;
@@ -171,7 +173,7 @@ dialog::backdrop {
   }
 }
 
-/* Componentes base reutilizáveis */
+/* Componentes base reutilizáveis (mesma camada: utilitários do Tailwind têm prioridade). */
 .tw-card {
   border: 1px solid var(--border);
   border-radius: 0.75rem;
@@ -303,6 +305,7 @@ dialog::backdrop {
 
 .tw-table tbody tr:hover {
   background-color: var(--surface-alt);
+}
 }
 
 /* Responsive table wrapper */
