@@ -7,6 +7,11 @@ export interface EnvConfig {
   host: string;
   corsOrigin: string;
   cookieSecure: boolean;
+  /**
+   * Repassado ao Fastify. false (padrão) ignora X-Forwarded-For; só habilite quando o backend
+   * estiver atrás de um proxy reverso confiável, informando true ou o IP/CIDR do proxy.
+   */
+  trustProxy?: boolean | string;
   jwtSecret: string;
   dbPath: string;
   seedAdminName?: string;
@@ -38,6 +43,13 @@ function resolveJwtSecret(dbPath: string): string {
   return generated;
 }
 
+export function parseTrustProxy(raw: string | undefined): boolean | string {
+  const value = raw?.trim();
+  if (!value || value.toLowerCase() === "false") return false;
+  if (value.toLowerCase() === "true") return true;
+  return value;
+}
+
 export function loadEnv(): EnvConfig {
   const envFile = path.resolve(process.cwd(), ".env");
   if (fs.existsSync(envFile) && typeof process.loadEnvFile === "function") {
@@ -55,6 +67,7 @@ export function loadEnv(): EnvConfig {
     host,
     corsOrigin,
     cookieSecure,
+    trustProxy: parseTrustProxy(process.env.TRUST_PROXY),
     jwtSecret: resolveJwtSecret(dbPath),
     dbPath,
     seedAdminName: process.env.SEED_ADMIN_NAME?.trim() || undefined,

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getCachedSettings,
   getCachedSuggestions,
@@ -25,6 +25,15 @@ import type {
   TiUser
 } from "../types";
 
+/**
+ * Versão esperada após a operação offline enfileirada ser aplicada no servidor.
+ * Itens já sincronizados (id > 0) são atualizados com expected_version, e o servidor faz version + 1.
+ * Itens criados offline (id < 0) são atualizados por client_uuid sem expected_version.
+ */
+function localNextVersion(item: { id: number; version: number }): number {
+  return item.id > 0 ? item.version + 1 : item.version;
+}
+
 export function useSyncData(
   user: AuthUser | null,
   onSessionExpired: () => void,
@@ -48,6 +57,17 @@ export function useSyncData(
   const [syncing, setSyncing] = useState(false);
   const [syncNotice, setSyncNotice] = useState<string | null>(null);
 
+  // Os callbacks chegam como funções novas a cada render do App (ex.: `() => setUser(null)`).
+  // Antes eles entravam nas dependências de loadFromLocalDb/syncNow e do useEffect abaixo, então
+  // cada render disparava um novo sync, que causava outro render: um laço infinito de
+  // GET /api/sync/snapshot que estourava o rate limit (429) e acabava deslogando o usuário.
+  const onSessionExpiredRef = useRef(onSessionExpired);
+  const onSettingsSyncedRef = useRef(onSettingsSynced);
+  useEffect(() => {
+    onSessionExpiredRef.current = onSessionExpired;
+    onSettingsSyncedRef.current = onSettingsSynced;
+  });
+
   const loadFromLocalDb = useCallback(async () => {
     const [m, eq, sec, loc, usr, sug, cachedSettings, pend] = await Promise.all([
       offlineDb.movements.toArray(),
@@ -60,9 +80,7 @@ export function useSyncData(
       getPendingSyncCount()
     ]);
 
-    if (onSettingsSynced) {
-      onSettingsSynced(cachedSettings);
-    }
+    onSettingsSyncedRef.current?.(cachedSettings);
 
     m.sort((x, y) => y.out_at.localeCompare(x.out_at));
     eq.sort((x, y) => y.updated_at.localeCompare(x.updated_at));
@@ -79,7 +97,7 @@ export function useSyncData(
     setUsers(usr);
     setSuggestions(sug);
     setPendingCount(pend);
-  }, [onSettingsSynced]);
+  }, []);
 
   const syncNow = useCallback(async () => {
     if (!user) return;
@@ -87,7 +105,7 @@ export function useSyncData(
     try {
       const result = await runSyncCycle();
       if (result.authExpired) {
-        onSessionExpired();
+        onSessionExpiredRef.current();
         return;
       }
       if (result.conflicts.length > 0) {
@@ -99,7 +117,7 @@ export function useSyncData(
     } finally {
       setSyncing(false);
     }
-  }, [user, loadFromLocalDb, onSessionExpired]);
+  }, [user, loadFromLocalDb]);
 
   useEffect(() => {
     if (!user) return;
@@ -238,6 +256,9 @@ export function useSyncData(
       patrimony:
         patch.patrimony !== undefined ? patch.patrimony.trim() || null : item.patrimony,
       active: patch.active !== undefined ? (patch.active ? 1 : 0) : item.active,
+      // O servidor incrementa a versão ao aplicar esta operação; refletimos isso localmente para que
+      // uma segunda edição offline do mesmo item envie expected_version correto (antes virava conflito).
+      version: localNextVersion(item),
       updated_by_id: user.id,
       updated_by_name: user.full_name,
       updated_at: now,
@@ -347,6 +368,7 @@ export function useSyncData(
     const updatedLocal: MovementItem = {
       ...item,
       ...patch,
+      version: localNextVersion(item),
       updated_at: now,
       _pendingSync: true
     };
@@ -381,6 +403,7 @@ export function useSyncData(
       returned_at: now,
       returned_to_id: user.id,
       returned_to_name: user.full_name,
+      version: localNextVersion(item),
       updated_at: now,
       _pendingSync: true
     };

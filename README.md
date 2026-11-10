@@ -76,7 +76,7 @@ npm test
 npm run build
 ```
 
-> **Nota para uso em rede local / celular (PWA):** Navegadores móveis exigem `localhost` ou **HTTPS** para habilitar o Service Worker e a instalação do PWA. Para instalação em celulares da rede, publique o build `frontend/dist` com proxy reverso para `/api` atrás de HTTPS (por exemplo, Caddy ou Nginx).
+> **Nota para uso em rede local / celular (PWA):** Navegadores móveis exigem `localhost` ou **HTTPS** para habilitar o Service Worker e a instalação do PWA. Para instalação em celulares da rede, publique o build `frontend/dist` com proxy reverso para `/api` atrás de HTTPS (por exemplo, Caddy ou Nginx). Nesse cenário, defina `TRUST_PROXY` no `backend/.env` (por exemplo, `TRUST_PROXY=127.0.0.1`, o IP do proxy) para que o backend enxergue o IP real de cada cliente; sem isso, o rate limit de login passa a ser compartilhado por todos os usuários. Não habilite `TRUST_PROXY` se o backend recebe conexões diretas, pois o cabeçalho `X-Forwarded-For` poderia ser forjado.
 
 ## Estrutura do projeto
 

@@ -3,7 +3,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { withTransaction } from "../db/connection.js";
 import { writeAuditLog } from "../security/audit.js";
 import type { AuthUser } from "../security/auth.js";
-import { ConflictError, NotFoundError } from "./errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "./errors.js";
 
 export type MovementType = "emprestimo" | "instalacao_fixa";
 export type MovementStatus = "ativo" | "devolvido" | "fixo";
@@ -67,6 +67,73 @@ export interface ReturnMovementInput {
   returned_at?: string;
   notes?: string;
   expected_version?: number;
+}
+
+const ALLOWED_STATUSES: Record<MovementType, MovementStatus[]> = {
+  emprestimo: ["ativo", "devolvido"],
+  instalacao_fixa: ["fixo", "devolvido"]
+};
+
+const OPEN_STATUSES: MovementStatus[] = ["ativo", "fixo"];
+
+function assertSectorExists(db: DatabaseSync, sectorId: number | null | undefined): void {
+  if (sectorId === null || sectorId === undefined) return;
+  const row = db.prepare("SELECT id FROM catalog_sectors WHERE id = ?").get(sectorId);
+  if (!row) {
+    throw new BadRequestError("Setor informado não existe.");
+  }
+}
+
+/**
+ * Garante que o equipamento do catálogo pode sair: existe, está ativo, não foi descartado e não
+ * possui outra movimentação em aberto (empréstimo ativo ou instalação fixa).
+ */
+function assertEquipmentAvailable(
+  db: DatabaseSync,
+  equipmentId: number | null | undefined,
+  ignoreMovementId?: number
+): { patrimony: string | null } | undefined {
+  if (equipmentId === null || equipmentId === undefined) return undefined;
+
+  const equipment = db
+    .prepare("SELECT id, name, patrimony, active, condition_status FROM catalog_equipments WHERE id = ?")
+    .get(equipmentId) as
+    | { id: number; name: string; patrimony: string | null; active: number; condition_status: string }
+    | undefined;
+
+  if (!equipment) {
+    throw new BadRequestError("Equipamento informado não existe.");
+  }
+  if (equipment.active !== 1) {
+    throw new BadRequestError(`O equipamento ${equipment.name} está inativo e não pode ser movimentado.`);
+  }
+  if (equipment.condition_status === "descartado") {
+    throw new BadRequestError(`O equipamento ${equipment.name} está descartado e não pode ser movimentado.`);
+  }
+
+  const placeholders = OPEN_STATUSES.map(() => "?").join(", ");
+  const open = db
+    .prepare(
+      `SELECT document_code FROM movements
+       WHERE equipment_id = ? AND status IN (${placeholders}) AND id != ?
+       LIMIT 1`
+    )
+    .get(equipmentId, ...OPEN_STATUSES, ignoreMovementId ?? -1) as { document_code: string } | undefined;
+
+  if (open) {
+    throw new ConflictError(
+      `O equipamento ${equipment.name} já está fora na movimentação ${open.document_code}. Registre a devolução antes.`
+    );
+  }
+
+  return { patrimony: equipment.patrimony };
+}
+
+function assertReturnAfterOut(outAt: string, returnedAt: string | null): void {
+  if (!returnedAt) return;
+  if (new Date(returnedAt).getTime() < new Date(outAt).getTime()) {
+    throw new BadRequestError("A data de devolução não pode ser anterior à data de saída.");
+  }
 }
 
 function generateNextDocumentCode(db: DatabaseSync): string {
@@ -136,6 +203,10 @@ export function createMovement(
   const outAt = input.out_at || now;
 
   return withTransaction(db, () => {
+    assertSectorExists(db, input.sector_id);
+    const equipment = assertEquipmentAvailable(db, input.equipment_id);
+    const patrimony = input.patrimony?.trim() || equipment?.patrimony || "";
+
     const documentCode = generateNextDocumentCode(db);
     const info = db.prepare(`
       INSERT INTO movements (
@@ -150,7 +221,7 @@ export function createMovement(
       movementType,
       input.equipment_id ?? null,
       input.equipment_name.trim(),
-      input.patrimony?.trim() || "",
+      patrimony,
       input.sector_id ?? null,
       input.sector_name.trim(),
       input.install_location?.trim() || "",
@@ -232,7 +303,38 @@ export function updateMovement(
     nextReturnedToName = null;
   }
 
+  // Regras de consistência de estado (antes era possível gravar "empréstimo" com status "fixo",
+  // ou "devolvido" sem data de devolução).
+  if (!ALLOWED_STATUSES[nextType].includes(nextStatus)) {
+    throw new BadRequestError(
+      nextType === "emprestimo"
+        ? "Um empréstimo só pode estar ativo ou devolvido."
+        : "Uma instalação fixa só pode estar fixa ou devolvida."
+    );
+  }
+  if (nextStatus === "devolvido" && !nextReturnedAt) {
+    throw new BadRequestError("Uma movimentação devolvida precisa ter data de devolução.");
+  }
+  if (nextStatus !== "devolvido" && input.returned_at) {
+    throw new BadRequestError("Só é possível informar data de devolução em movimentações devolvidas.");
+  }
+
+  const nextOutAt = input.out_at !== undefined ? input.out_at : current.out_at;
+  assertReturnAfterOut(nextOutAt, nextReturnedAt);
+
+  const nextEquipmentId = input.equipment_id !== undefined ? input.equipment_id : current.equipment_id;
+  const nextSectorId = input.sector_id !== undefined ? input.sector_id : current.sector_id;
+  const equipmentChanged = nextEquipmentId !== current.equipment_id;
+  const reopening = OPEN_STATUSES.includes(nextStatus) && !OPEN_STATUSES.includes(current.status);
+
   return withTransaction(db, () => {
+    if (nextSectorId !== current.sector_id) {
+      assertSectorExists(db, nextSectorId);
+    }
+    if (OPEN_STATUSES.includes(nextStatus) && (equipmentChanged || reopening)) {
+      assertEquipmentAvailable(db, nextEquipmentId, current.id);
+    }
+
     db.prepare(`
       UPDATE movements SET
         movement_type = ?,
@@ -254,15 +356,15 @@ export function updateMovement(
       WHERE id = ?
     `).run(
       nextType,
-      input.equipment_id !== undefined ? input.equipment_id : current.equipment_id,
+      nextEquipmentId,
       input.equipment_name !== undefined ? input.equipment_name.trim() : current.equipment_name,
       input.patrimony !== undefined ? input.patrimony.trim() : current.patrimony,
-      input.sector_id !== undefined ? input.sector_id : current.sector_id,
+      nextSectorId,
       input.sector_name !== undefined ? input.sector_name.trim() : current.sector_name,
       input.install_location !== undefined ? input.install_location.trim() : current.install_location,
       input.received_by !== undefined ? input.received_by.trim() : current.received_by,
       input.notes !== undefined ? input.notes.trim() : current.notes,
-      input.out_at !== undefined ? input.out_at : current.out_at,
+      nextOutAt,
       nextReturnedAt,
       nextStatus,
       nextReturnedToId,
@@ -321,6 +423,7 @@ export function returnMovement(
 
   const now = new Date().toISOString();
   const returnedAt = input.returned_at || now;
+  assertReturnAfterOut(current.out_at, returnedAt);
   const nextNotes = input.notes !== undefined ? input.notes.trim() : current.notes;
 
   return withTransaction(db, () => {

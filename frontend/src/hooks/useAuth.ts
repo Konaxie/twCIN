@@ -7,7 +7,7 @@ import {
   saveCachedUser
 } from "../offline/db";
 import { runSyncCycle } from "../offline/syncEngine";
-import { apiRequest, isNetworkError } from "../services/api";
+import { apiRequest, ApiError, isNetworkError } from "../services/api";
 import type { AuthUser, PublicSettings } from "../types";
 
 export function useAuth() {
@@ -46,7 +46,10 @@ export function useAuth() {
       setUser(data.user);
       await saveCachedUser(data.user);
     } catch (err) {
-      if (isNetworkError(err)) {
+      // Só 401/403 significam sessão inválida. Antes qualquer erro (ex.: 429 do rate limit ou 500)
+      // apagava o usuário em cache e mandava para o login.
+      const sessionRejected = err instanceof ApiError && (err.status === 401 || err.status === 403);
+      if (isNetworkError(err) || !sessionRejected) {
         const cached = await getCachedUser();
         setUser(cached);
       } else {

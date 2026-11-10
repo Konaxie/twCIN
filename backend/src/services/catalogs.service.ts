@@ -3,7 +3,14 @@ import type { DatabaseSync } from "node:sqlite";
 import { withTransaction } from "../db/connection.js";
 import { writeAuditLog } from "../security/audit.js";
 import type { AuthUser } from "../security/auth.js";
-import { ConflictError, NotFoundError } from "./errors.js";
+import { BadRequestError, ConflictError, NotFoundError } from "./errors.js";
+
+function assertSectorExists(db: DatabaseSync, sectorId: number | null | undefined): void {
+  if (sectorId === null || sectorId === undefined) return;
+  if (!db.prepare("SELECT id FROM catalog_sectors WHERE id = ?").get(sectorId)) {
+    throw new BadRequestError("Setor informado não existe.");
+  }
+}
 
 export type EquipmentOwnership = "proprio_ti" | "estoque" | "terceiro";
 export type EquipmentCondition =
@@ -387,6 +394,7 @@ export function createCatalogLocation(
   if (dup) {
     throw new ConflictError("Este local já está cadastrado.");
   }
+  assertSectorExists(db, input.sector_id);
 
   const now = new Date().toISOString();
   return withTransaction(db, () => {
@@ -435,6 +443,9 @@ export function updateCatalogLocation(
   if (dup) {
     throw new ConflictError("Já existe outro local com este nome.");
   }
+  if (input.sector_id !== undefined) {
+    assertSectorExists(db, input.sector_id);
+  }
 
   return withTransaction(db, () => {
     db.prepare(`
@@ -473,13 +484,32 @@ export function getSuggestions(db: DatabaseSync): SuggestionsPayload {
     equipmentMap.set(key, { id: eq.id, name: eq.name, patrimony: pat });
   }
 
+  // Itens desativados no catálogo não devem "voltar" pelas sugestões vindas do histórico.
+  const inactiveEquipKeys = new Set(
+    (
+      db
+        .prepare("SELECT name, patrimony FROM catalog_equipments WHERE active = 0")
+        .all() as Array<{ name: string; patrimony: string | null }>
+    ).map((eq) => `${eq.name.toLowerCase()}|${(eq.patrimony || "").toLowerCase()}`)
+  );
+  const inactiveSectorNames = new Set(
+    (db.prepare("SELECT name FROM catalog_sectors WHERE active = 0").all() as Array<{ name: string }>).map(
+      (s) => s.name.toLowerCase()
+    )
+  );
+  const inactiveLocationNames = new Set(
+    (db.prepare("SELECT name FROM catalog_locations WHERE active = 0").all() as Array<{ name: string }>).map(
+      (l) => l.name.toLowerCase()
+    )
+  );
+
   const recentEqRows = db
     .prepare("SELECT equipment_name, patrimony FROM movements WHERE equipment_name != ''")
     .all() as Array<{ equipment_name: string; patrimony: string }>;
 
   for (const row of recentEqRows) {
     const key = `${row.equipment_name.toLowerCase()}|${(row.patrimony || "").toLowerCase()}`;
-    if (!equipmentMap.has(key)) {
+    if (!equipmentMap.has(key) && !inactiveEquipKeys.has(key)) {
       equipmentMap.set(key, { id: null, name: row.equipment_name, patrimony: row.patrimony || "" });
     }
   }
@@ -499,7 +529,7 @@ export function getSuggestions(db: DatabaseSync): SuggestionsPayload {
     .all() as Array<{ name: string }>;
 
   for (const row of recentSectorRows) {
-    if (!sectorMap.has(row.name.toLowerCase())) {
+    if (!sectorMap.has(row.name.toLowerCase()) && !inactiveSectorNames.has(row.name.toLowerCase())) {
       sectorMap.set(row.name.toLowerCase(), { id: null, name: row.name, is_default: false });
     }
   }
@@ -512,7 +542,9 @@ export function getSuggestions(db: DatabaseSync): SuggestionsPayload {
     .prepare("SELECT DISTINCT install_location AS name FROM movements WHERE install_location != ''")
     .all() as Array<{ name: string }>;
   for (const row of recentLocRows) {
-    locationSet.add(row.name);
+    if (!inactiveLocationNames.has(row.name.toLowerCase())) {
+      locationSet.add(row.name);
+    }
   }
 
   const peopleSet = new Set<string>();
