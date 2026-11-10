@@ -5,33 +5,33 @@
 ![React](https://img.shields.io/badge/React-19-61DAFB?logo=react&logoColor=black)
 ![SQLite](https://img.shields.io/badge/SQLite-node%3Asqlite-003B57?logo=sqlite&logoColor=white)
 ![PWA](https://img.shields.io/badge/PWA-Offline--First-5A0FC8)
-![License](https://img.shields.io/badge/License-MIT-blue.svg)
+![Licença](https://img.shields.io/badge/Licen%C3%A7a-MIT-blue.svg)
 
-An internal IT workbench, equipment movement, and loan tracking Progressive Web App (PWA) built for fast, low-friction daily operations.
+Aplicação web progressiva (PWA) offline-first para gestão interna do setor de TI, controle de equipamentos sob custódia, movimentações, empréstimos e instalações.
 
-## What It Does
+## O que o projeto faz
 
-**twCIN** gives internal IT teams a single workspace to track equipment under IT custody (`Equipamentos`), record exits and loans to other departments (`Movimentações`), monitor operational metrics (`Gráficos`), and access frequent actions (`Início`)—without forcing an external helpdesk ticketing portal on end users.
+O **twCIN** oferece à equipe de TI um ambiente único para controlar equipamentos sob responsabilidade do setor (**Equipamentos**), registrar saídas e empréstimos para outros setores (**Movimentações**), acompanhar métricas operacionais (**Gráficos**) e executar ações rápidas do dia a dia (**Início**) — sem depender de portal de chamados para usuários finais.
 
-## Why It Is Useful
+## Por que ele é útil
 
-- **Quick overview (`Início`):** Unified search, quick shortcuts, equipment currently in maintenance/evaluation, and active loans in one place.
-- **IT Equipment Custody (`Equipamentos`):** Distinguishes own IT equipment, stock items, and items received from other departments or third parties (including origin, received from, reason, condition status, and movement history).
-- **Movements, History & Printable PDFs (`Movimentações`):** Automatic or manual date/time capture, searchable destination sector selector with inline confirmed sector creation, required install location, integrated sector/location configuration, full movement history and audit logs, one-click return registration, and clean A4 print/PDF receipts and reports.
-- **Visual Analytics (`Gráficos`):** Interactive indicators for equipment condition, ownership distribution, 14-day movement timeline, top sectors, top locations, most-moved equipment, and technician activity.
-- **Full editability & immutable audit logs:** Every equipment, movement, sector, location, and user update is editable and recorded in an append-only `audit_logs` trail with before/after JSON snapshots.
-- **Offline-first PWA synchronization:** Installs on desktop and mobile devices, caches operational data in `IndexedDB` (Dexie), queues offline changes with `client_uuid` idempotency, and syncs multi-user updates with `version`-based conflict detection.
-- **Security by design:** Password hashing via `scrypt` + `timingSafeEqual`, `HttpOnly` JWT session cookies, `token_version` session revocation, forced password change on first login (optional per user), Zod input validation, `@fastify/helmet`, and route-level `@fastify/rate-limit`.
-- **Customizable white-label branding, theme & device install (`Configurações`):** Manage personal account security (`Minha Conta`), customize system title, organization name, and PNG/JPEG/WebP logo (`Organização`), switch between **System default**, **Light**, and **Dark** themes (`Aparência`), and install the PWA on demand without pop-ups (`Aplicativo`).
+- **Visão rápida (`Início`):** Busca unificada, atalhos para ações frequentes, lista de equipamentos em manutenção/avaliação e empréstimos em aberto em um só lugar.
+- **Gestão de equipamentos (`Equipamentos`):** Distingue itens próprios do TI, estoque e equipamentos recebidos de terceiros/outros setores (com origem, de quem foi recebido, motivo, situação atual e histórico vinculado).
+- **Movimentações, histórico e PDFs (`Movimentações`):** Preenchimento automático ou manual de data e hora, seleção pesquisável de setores com opção manual, autocomplete e criação confirmada no catálogo, local de instalação obrigatório, configuração integrada de setores e locais, histórico completo com trilha de logs e exportação em PDF A4.
+- **Indicadores visuais (`Gráficos`):** Gráficos para análise rápida da situação do acervo, origem dos equipamentos, linha do tempo dos últimos 14 dias, setores mais atendidos, locais frequentes, itens mais movimentados e atuação dos técnicos.
+- **Edição completa e auditoria imutável:** Todos os registros de equipamentos, movimentações, setores, locais e usuários são editáveis e rastreados na tabela `audit_logs` com snapshots JSON antes/depois.
+- **PWA offline-first com sincronização:** Instalável em computador e celular (via **Configurações → Aplicativo**, sem pop-ups automáticos), armazena dados em `IndexedDB` (Dexie), enfileira mutações offline com idempotência por `client_uuid` e detecta conflitos por `version`.
+- **Segurança por padrão:** Senhas com `scrypt` + `timingSafeEqual`, sessões via cookie JWT `HttpOnly`, revogação imediata de sessões via `token_version`, troca obrigatória de senha no primeiro acesso (configurável por usuário), validação com Zod, `@fastify/helmet` e `@fastify/rate-limit`.
+- **Identidade personalizável e temas (`Configurações`):** Gerencie conta pessoal (**Minha Conta**), personalize nome do sistema, nome da organização e logo PNG/JPEG/WebP (**Organização**), escolha entre **Padrão do sistema**, **Claro** ou **Escuro** (**Aparência**) e instale o PWA sob demanda (**Aplicativo**).
 
-## Getting Started
+## Primeiros passos
 
-### Prerequisites
+### Pré-requisitos
 
-- **Node.js `24.x`** or newer (uses built-in `node:sqlite`, no C++ build tools required)
+- **Node.js `24.x`** ou superior (utiliza o módulo nativo `node:sqlite`, sem necessidade de compilação C++)
 - **npm `10+`**
 
-### Installation
+### Instalação
 
 ```bash
 git clone https://github.com/WiltonGabriel/twCIN.git
@@ -41,63 +41,63 @@ npm --prefix backend install
 npm --prefix frontend install
 ```
 
-### Configuration (Optional)
+### Configuração (opcional)
 
-By default, the backend stores its SQLite database at `backend/data/twcin.db` and generates a persistent local signing key in `backend/data/.jwt_secret`. For custom settings or production deployment, copy the example environment file:
+Por padrão, o backend armazena o banco SQLite em `backend/data/twcin.db` e gera uma chave local persistente em `backend/data/.jwt_secret`. Para personalizar variáveis de ambiente em implantação, copie o arquivo de exemplo:
 
 ```bash
 cp backend/.env.example backend/.env
 ```
 
-### Running Locally
+### Executando localmente
 
-Start both the Fastify API (`http://localhost:3333`) and Vite PWA frontend (`http://localhost:5173`):
+Inicie simultaneamente a API Fastify (`http://localhost:3333`) e o frontend Vite PWA (`http://localhost:5173`):
 
 ```bash
 npm run dev
 ```
 
-On Windows PowerShell (when script execution policy restricts `.ps1` shims), run `npm.cmd run dev` or `node scripts/dev.mjs`.
+No Windows PowerShell (caso a política de execução bloqueie scripts `.ps1`), execute `npm.cmd run dev` ou `node scripts/dev.mjs`.
 
-### First-Time Setup
+### Primeiro acesso (Setup inicial)
 
-When starting with a fresh database (no users yet), open `http://localhost:5173` in your browser to create the first IT user account and optional organization name directly on the setup screen.
+Ao iniciar com o banco de dados vazio (sem usuários cadastrados), abra `http://localhost:5173` no navegador para criar a primeira conta da equipe de TI e definir o nome da organização na própria tela inicial.
 
-### Testing and Building
+### Testes e build de produção
 
 ```bash
-# Typecheck backend
+# Verificação de tipos do backend
 npm --prefix backend run typecheck
 
-# Run automated backend test suite
+# Suite automatizada de testes do backend
 npm test
 
-# Build backend and production PWA bundle
+# Build de produção do backend e do frontend PWA
 npm run build
 ```
 
-> **Note for LAN / Mobile PWA deployment:** Browsers allow Service Worker caching and PWA installation on `localhost` or over **HTTPS**. When deploying to an internal server, serve `frontend/dist` and proxy `/api` to the backend behind an HTTPS reverse proxy (e.g., Caddy or Nginx).
+> **Nota para uso em rede local / celular (PWA):** Navegadores móveis exigem `localhost` ou **HTTPS** para habilitar o Service Worker e a instalação do PWA. Para instalação em celulares da rede, publique o build `frontend/dist` com proxy reverso para `/api` atrás de HTTPS (por exemplo, Caddy ou Nginx).
 
-## Project Structure
+## Estrutura do projeto
 
 ```text
 twCIN/
-├── backend/              # Fastify REST API, SQLite schema, auth, sync & tests
+├── backend/              # API REST Fastify, schema SQLite, auth, sync e testes
 ├── frontend/             # React 19 + TypeScript + Tailwind + Vite PWA
-├── docs/                 # Supplementary documentation
-├── scripts/dev.mjs       # Local multi-process runner
-├── CONTRIBUTING.md       # Contribution guidelines
-└── LICENSE               # MIT License
+├── docs/                 # Documentação complementar
+├── scripts/dev.mjs       # Executor local multi-processo
+├── CONTRIBUTING.md       # Guia de contribuição
+└── LICENSE               # Licença MIT
 ```
 
-## Where to Get Help
+## Onde obter ajuda
 
-- **API overview:** [docs/API.md](docs/API.md)
-- **Contribution rules:** [CONTRIBUTING.md](CONTRIBUTING.md)
-- **Bug reports & feature requests:** Open an issue in the repository's GitHub Issues tab.
+- **Referência da API:** [docs/API.md](docs/API.md)
+- **Diretrizes de contribuição:** [CONTRIBUTING.md](CONTRIBUTING.md)
+- **Relato de bugs e melhorias:** Abra uma issue na aba *Issues* do repositório no GitHub.
 
-## Maintainers and Contributing
+## Mantenedores e contribuição
 
-Maintained by **Wilton Pereira** and **Thales**.
+Mantido por **Wilton Pereira** e **Thales**.
 
-Contributions are welcome—see [CONTRIBUTING.md](CONTRIBUTING.md) before submitting a pull request. Released under the [MIT License](LICENSE).
+Contribuições são bem-vindas — consulte [CONTRIBUTING.md](CONTRIBUTING.md) antes de enviar um pull request. Distribuído sob a [Licença MIT](LICENSE).
