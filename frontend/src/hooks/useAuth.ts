@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  clearLocalDataForLogout,
   getCachedSettings,
   getCachedUser,
-  offlineDb,
   saveCachedSettings,
   saveCachedUser
 } from "../offline/db";
@@ -80,7 +80,7 @@ export function useAuth() {
     setUser(data.user);
     await saveCachedUser(data.user);
     await loadPublicSettings();
-    void runSyncCycle();
+    void runSyncCycle(data.user.id);
     return data.user;
   };
 
@@ -93,7 +93,7 @@ export function useAuth() {
     setUser(data.user);
     await saveCachedUser(data.user);
     if (!data.user.must_change_password) {
-      void runSyncCycle();
+      void runSyncCycle(data.user.id);
     }
     return data.user;
   };
@@ -108,11 +108,17 @@ export function useAuth() {
     });
     setUser(data.user);
     await saveCachedUser(data.user);
-    void runSyncCycle();
+    void runSyncCycle(data.user.id);
     return data.user;
   };
 
+  /**
+   * Encerra a sessão e apaga deste aparelho os dados da organização e as operações do usuário.
+   * Quem chama deve confirmar com a pessoa antes, caso existam operações pendentes
+   * (ver getPendingSyncCount): elas são perdidas.
+   */
   const logout = async (): Promise<void> => {
+    const userId = user?.id;
     try {
       await apiRequest("/api/auth/logout", { method: "POST", body: JSON.stringify({}) });
     } catch {
@@ -120,7 +126,9 @@ export function useAuth() {
     }
     setUser(null);
     await saveCachedUser(null);
-    await offlineDb.syncQueue.clear();
+    if (userId !== undefined) {
+      await clearLocalDataForLogout(userId);
+    }
   };
 
   return {

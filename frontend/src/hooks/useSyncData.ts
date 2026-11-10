@@ -3,11 +3,15 @@ import {
   getCachedSettings,
   getCachedSuggestions,
   offlineDb,
+  type FailedOpEntry,
   type SyncQueueEntry
 } from "../offline/db";
 import {
+  discardFailedOp,
   enqueueOfflineOperation,
   getPendingSyncCount,
+  listFailedOps,
+  retryFailedOp,
   runSyncCycle
 } from "../offline/syncEngine";
 import { apiRequest, isNetworkError } from "../services/api";
@@ -61,6 +65,10 @@ export function useSyncData(
   // Antes eles entravam nas dependências de loadFromLocalDb/syncNow e do useEffect abaixo, então
   // cada render disparava um novo sync, que causava outro render: um laço infinito de
   // GET /api/sync/snapshot que estourava o rate limit (429) e acabava deslogando o usuário.
+  const [failedOps, setFailedOps] = useState<FailedOpEntry[]>([]);
+  const userIdRef = useRef<number | null>(user?.id ?? null);
+  userIdRef.current = user?.id ?? null;
+
   const onSessionExpiredRef = useRef(onSessionExpired);
   const onSettingsSyncedRef = useRef(onSettingsSynced);
   useEffect(() => {
@@ -69,7 +77,9 @@ export function useSyncData(
   });
 
   const loadFromLocalDb = useCallback(async () => {
-    const [m, eq, sec, loc, usr, sug, cachedSettings, pend] = await Promise.all([
+    const userId = userIdRef.current;
+    if (userId === null) return;
+    const [m, eq, sec, loc, usr, sug, cachedSettings, pend, failed] = await Promise.all([
       offlineDb.movements.toArray(),
       offlineDb.equipments.toArray(),
       offlineDb.sectors.toArray(),
@@ -77,7 +87,8 @@ export function useSyncData(
       offlineDb.users.toArray(),
       getCachedSuggestions(),
       getCachedSettings(),
-      getPendingSyncCount()
+      getPendingSyncCount(userId),
+      listFailedOps(userId)
     ]);
 
     onSettingsSyncedRef.current?.(cachedSettings);
@@ -97,19 +108,24 @@ export function useSyncData(
     setUsers(usr);
     setSuggestions(sug);
     setPendingCount(pend);
+    setFailedOps(failed);
   }, []);
 
   const syncNow = useCallback(async () => {
     if (!user) return;
     setSyncing(true);
     try {
-      const result = await runSyncCycle();
+      const result = await runSyncCycle(user.id);
       if (result.authExpired) {
         onSessionExpiredRef.current();
         return;
       }
-      if (result.conflicts.length > 0) {
-        setSyncNotice(result.conflicts[0]);
+      if (result.failed > 0) {
+        setSyncNotice(
+          result.failed === 1
+            ? "1 alteração feita offline não pôde ser aplicada. Revise em Configurações → Sincronização."
+            : `${result.failed} alterações feitas offline não puderam ser aplicadas. Revise em Configurações → Sincronização.`
+        );
       }
       await loadFromLocalDb();
     } catch {
@@ -155,9 +171,21 @@ export function useSyncData(
   }, [user, loadFromLocalDb, syncNow]);
 
   const queueMutation = async (
-    entry: Omit<SyncQueueEntry, "id" | "op_id" | "created_at">
+    entry: Omit<SyncQueueEntry, "id" | "op_id" | "created_at" | "user_id">
   ) => {
-    await enqueueOfflineOperation(entry);
+    if (!user) return;
+    await enqueueOfflineOperation({ ...entry, user_id: user.id });
+    await loadFromLocalDb();
+  };
+
+  const retryFailed = async (id: number, overwrite: boolean) => {
+    await retryFailedOp(id, overwrite);
+    await loadFromLocalDb();
+    await syncNow();
+  };
+
+  const discardFailed = async (id: number) => {
+    await discardFailedOp(id);
     await loadFromLocalDb();
   };
 
@@ -215,7 +243,8 @@ export function useSyncData(
     await queueMutation({
       type: "equipment.create",
       client_uuid,
-      payload: { ...payload, client_uuid }
+      payload: { ...payload, client_uuid },
+      optimistic: { table: "equipments", record: optimistic }
     });
   };
 
@@ -268,7 +297,8 @@ export function useSyncData(
     await queueMutation({
       type: "equipment.update",
       ...(item.id > 0 ? { entity_id: item.id } : { client_uuid: item.client_uuid }),
-      payload: { ...patch, ...(item.id > 0 ? { expected_version: item.version } : {}) }
+      payload: { ...patch, ...(item.id > 0 ? { expected_version: item.version } : {}) },
+      optimistic: { table: "equipments", record: updatedLocal }
     });
   };
 
@@ -330,7 +360,8 @@ export function useSyncData(
     await queueMutation({
       type: "movement.create",
       client_uuid,
-      payload: { ...payload, client_uuid }
+      payload: { ...payload, client_uuid },
+      optimistic: { table: "movements", record: optimistic }
     });
   };
 
@@ -376,7 +407,8 @@ export function useSyncData(
     await queueMutation({
       type: "movement.update",
       ...(item.id > 0 ? { entity_id: item.id } : { client_uuid: item.client_uuid }),
-      payload: { ...patch, ...(item.id > 0 ? { expected_version: item.version } : {}) }
+      payload: { ...patch, ...(item.id > 0 ? { expected_version: item.version } : {}) },
+      optimistic: { table: "movements", record: updatedLocal }
     });
   };
 
@@ -411,7 +443,8 @@ export function useSyncData(
     await queueMutation({
       type: "movement.return",
       ...(item.id > 0 ? { entity_id: item.id } : { client_uuid: item.client_uuid }),
-      payload: { returned_at: now, ...(item.id > 0 ? { expected_version: item.version } : {}) }
+      payload: { returned_at: now, ...(item.id > 0 ? { expected_version: item.version } : {}) },
+      optimistic: { table: "movements", record: updatedLocal }
     });
   };
 
@@ -450,7 +483,8 @@ export function useSyncData(
     await offlineDb.sectors.put(optimistic);
     await queueMutation({
       type: "sector.create",
-      payload: { name: trimmed, is_default: Boolean(payload.is_default) }
+      payload: { name: trimmed, is_default: Boolean(payload.is_default) },
+      optimistic: { table: "sectors", record: optimistic }
     });
     return optimistic;
   };
@@ -464,6 +498,9 @@ export function useSyncData(
     suggestions,
     online,
     pendingCount,
+    failedOps,
+    retryFailed,
+    discardFailed,
     syncing,
     syncNotice,
     clearSyncNotice: () => setSyncNotice(null),

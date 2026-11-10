@@ -6,6 +6,7 @@ import { useAuth } from "./hooks/useAuth";
 import { usePwaInstall } from "./hooks/usePwaInstall";
 import { useSyncData } from "./hooks/useSyncData";
 import { useTheme } from "./hooks/useTheme";
+import { getPendingSyncCount } from "./offline/syncEngine";
 import { ConfiguracoesPage } from "./pages/ConfiguracoesPage";
 import { EquipamentosPage } from "./pages/EquipamentosPage";
 import { ForcePasswordChangePage } from "./pages/ForcePasswordChangePage";
@@ -42,6 +43,22 @@ export function App() {
   const readyUser = user && !user.must_change_password ? user : null;
   const syncData = useSyncData(readyUser, () => setUser(null), setSettings);
 
+  const handleLogout = async () => {
+    if (user) {
+      const pending = await getPendingSyncCount(user.id);
+      if (
+        pending > 0 &&
+        !window.confirm(
+          `HÃ¡ ${pending} alteraÃ§Ã£o(Ãµes) feitas offline que ainda nÃ£o chegaram ao servidor. ` +
+            "Se vocÃª sair agora, elas serÃ£o perdidas. Deseja sair mesmo assim?"
+        )
+      ) {
+        return;
+      }
+    }
+    await logout();
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center text-sm" style={{ color: "var(--text-muted)" }}>
@@ -67,7 +84,7 @@ export function App() {
         user={user}
         settings={settings}
         onChangePassword={changePassword}
-        onLogout={() => void logout()}
+        onLogout={() => void handleLogout()}
       />
     );
   }
@@ -78,7 +95,7 @@ export function App() {
       settings={settings}
       activePage={activePage}
       onNavigate={setActivePage}
-      onLogout={() => void logout()}
+      onLogout={() => void handleLogout()}
       online={syncData.online}
       pendingCount={syncData.pendingCount}
       syncing={syncData.syncing}
@@ -133,7 +150,7 @@ export function App() {
           onCreateSector={syncData.createSector}
           onRefreshCatalogs={syncData.syncNow}
           onPrintSingle={(item) => setPdfPayload({ kind: "movement", item })}
-          onPrintList={(list, title = "Movimentações de Equipamentos") =>
+          onPrintList={(list, title = "MovimentaÃ§Ãµes de Equipamentos") =>
             setPdfPayload({
               kind: "movements_report",
               title,
@@ -145,7 +162,7 @@ export function App() {
             setAuditTarget({
               entity: "movement",
               entityId: item.id,
-              title: `${item.document_code} — ${item.equipment_name}`
+              title: `${item.document_code} â€” ${item.equipment_name}`
             })
           }
         />
