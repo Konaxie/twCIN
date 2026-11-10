@@ -237,7 +237,8 @@ describe("twCIN API", () => {
     });
     assert.equal(missingLocRes.statusCode, 400);
 
-    const movRes = await app.inject({
+    // Equipamento em manutenção não pode sair (decisão de produto).
+    const blockedMovRes = await app.inject({
       method: "POST",
       url: "/api/movements",
       headers: { cookie },
@@ -248,7 +249,7 @@ describe("twCIN API", () => {
         install_location: "Balcão Principal"
       }
     });
-    assert.equal(movRes.statusCode, 201);
+    assert.equal(blockedMovRes.statusCode, 400);
 
     // Atualiza situação do equipamento
     const patchEqRes = await app.inject({
@@ -263,6 +264,19 @@ describe("twCIN API", () => {
     assert.equal(patchEqRes.statusCode, 200);
     assert.equal(patchEqRes.json().item.version, 2);
 
+    const movRes = await app.inject({
+      method: "POST",
+      url: "/api/movements",
+      headers: { cookie },
+      payload: {
+        equipment_id: eq.id,
+        equipment_name: eq.name,
+        sector_name: "Recepção",
+        install_location: "Balcão Principal"
+      }
+    });
+    assert.equal(movRes.statusCode, 201);
+
     // Consulta detalhes do equipamento com movimentações vinculadas
     const detailsRes = await app.inject({
       method: "GET",
@@ -270,7 +284,7 @@ describe("twCIN API", () => {
       headers: { cookie }
     });
     assert.equal(detailsRes.statusCode, 200);
-    assert.equal(detailsRes.json().item.condition_status, "disponivel");
+    assert.equal(detailsRes.json().item.condition_status, "emprestado", "situação atualizada pela saída");
     assert.equal(detailsRes.json().movements.length, 1);
 
     const auditRes = await app.inject({
@@ -279,7 +293,8 @@ describe("twCIN API", () => {
       headers: { cookie }
     });
     assert.equal(auditRes.statusCode, 200);
-    assert.equal(auditRes.json().items.length, 2);
+    // CREATE + STATUS_CHANGE manual + STATUS_CHANGE automático da saída
+    assert.equal(auditRes.json().items.length, 3);
   });
 
   it("cria movimentação, registra devolução e garante idempotência e conflito no /api/sync", async () => {
@@ -681,6 +696,118 @@ describe("twCIN API — correções da auditoria (fase 1)", () => {
       sugestoes.body.sectors.some((s: { name: string }) => s.name === "Almoxarifado"),
       false
     );
+  });
+
+  it("situação do equipamento acompanha saída, troca de tipo e devolução", async () => {
+    await setup();
+
+    const eq = (await call("POST", "/api/catalogs/equipments", { name: "Projetor", patrimony: "PJ-1" })).body.item;
+    const mov = (
+      await call("POST", "/api/movements", { ...baseMovement, equipment_id: eq.id, equipment_name: eq.name })
+    ).body.item;
+    const situacao = async () => (await call("GET", `/api/catalogs/equipments/${eq.id}`)).body.item.condition_status;
+
+    assert.equal(await situacao(), "emprestado");
+
+    // Edição manual da situação com movimentação aberta é bloqueada.
+    const manual = await call("PATCH", `/api/catalogs/equipments/${eq.id}`, { condition_status: "disponivel" });
+    assert.equal(manual.status, 409);
+    const desativar = await call("PATCH", `/api/catalogs/equipments/${eq.id}`, { active: false });
+    assert.equal(desativar.status, 409);
+
+    await call("PATCH", `/api/movements/${mov.id}`, { movement_type: "instalacao_fixa" });
+    assert.equal(await situacao(), "em_uso");
+
+    // Desfazer a instalação fixa devolve o equipamento.
+    const desfeita = await call("POST", `/api/movements/${mov.id}/return`, {});
+    assert.equal(desfeita.status, 200);
+    assert.equal(await situacao(), "disponivel");
+
+    // "Emprestado" não pode ser definido à mão.
+    const emprestadoManual = await call("PATCH", `/api/catalogs/equipments/${eq.id}`, { condition_status: "emprestado" });
+    assert.equal(emprestadoManual.status, 400);
+  });
+
+  it("bloqueia empréstimo de equipamento em manutenção ou avaliação", async () => {
+    await setup();
+    for (const condition_status of ["manutencao", "avaliacao"]) {
+      const eq = (await call("POST", "/api/catalogs/equipments", { name: `Item ${condition_status}`, condition_status })).body
+        .item;
+      const res = await call("POST", "/api/movements", { ...baseMovement, equipment_id: eq.id, equipment_name: eq.name });
+      assert.equal(res.status, 400, condition_status);
+    }
+  });
+
+  it("aplica prazo padrão de devolução e lista atrasados", async () => {
+    await setup();
+
+    const settings = await call("PATCH", "/api/settings", { loan_default_days: 3 });
+    assert.equal(settings.body.settings.loan_default_days, 3);
+
+    const outAt = "2026-01-10T12:00:00.000Z";
+    const comPrazo = (await call("POST", "/api/movements", { ...baseMovement, out_at: outAt })).body.item;
+    assert.equal(comPrazo.due_at, "2026-01-13T12:00:00.000Z");
+
+    const semPrazo = (await call("POST", "/api/movements", { ...baseMovement, equipment_name: "Cabo", due_at: null })).body
+      .item;
+    assert.equal(semPrazo.due_at, null);
+
+    const fixa = (
+      await call("POST", "/api/movements", { ...baseMovement, equipment_name: "Rack", movement_type: "instalacao_fixa" })
+    ).body.item;
+    assert.equal(fixa.due_at, null, "instalação fixa não tem prazo");
+
+    const prazoAntes = await call("POST", "/api/movements", {
+      ...baseMovement,
+      out_at: outAt,
+      due_at: "2026-01-09T00:00:00.000Z"
+    });
+    assert.equal(prazoAntes.status, 400);
+
+    const atrasados = await call("GET", "/api/movements?overdue=true");
+    assert.deepEqual(
+      atrasados.body.items.map((m: { id: number }) => m.id),
+      [comPrazo.id]
+    );
+  });
+
+  it("devolve equipamento de terceiro ao dono", async () => {
+    await setup();
+
+    const proprio = (await call("POST", "/api/catalogs/equipments", { name: "Switch" })).body.item;
+    const naoTerceiro = await call("POST", `/api/catalogs/equipments/${proprio.id}/return-to-owner`, {
+      received_by: "Maria"
+    });
+    assert.equal(naoTerceiro.status, 400);
+
+    const terceiro = (
+      await call("POST", "/api/catalogs/equipments", { name: "Notebook do Financeiro", ownership_type: "terceiro" })
+    ).body.item;
+    const mov = (
+      await call("POST", "/api/movements", { ...baseMovement, equipment_id: terceiro.id, equipment_name: terceiro.name })
+    ).body.item;
+
+    const comMovimentacaoAberta = await call("POST", `/api/catalogs/equipments/${terceiro.id}/return-to-owner`, {
+      received_by: "Maria"
+    });
+    assert.equal(comMovimentacaoAberta.status, 409);
+
+    await call("POST", `/api/movements/${mov.id}/return`, {});
+    const ok = await call("POST", `/api/catalogs/equipments/${terceiro.id}/return-to-owner`, {
+      received_by: "Maria",
+      notes: "Consertado"
+    });
+    assert.equal(ok.status, 200);
+    assert.equal(ok.body.item.condition_status, "devolvido_dono");
+    assert.equal(ok.body.item.active, 0);
+    assert.equal(ok.body.item.owner_received_by, "Maria");
+
+    const depois = await call("POST", "/api/movements", {
+      ...baseMovement,
+      equipment_id: terceiro.id,
+      equipment_name: terceiro.name
+    });
+    assert.equal(depois.status, 400, "não pode mais sair");
   });
 
   it("não deixa X-Forwarded-For forjado contornar o rate limit de login por padrão", async () => {

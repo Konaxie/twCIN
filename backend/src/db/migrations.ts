@@ -137,6 +137,12 @@ export function runMigrations(db: DatabaseSync): void {
   ensureColumn(db, "catalog_equipments", "updated_by_id", "INTEGER REFERENCES users(id) ON DELETE SET NULL");
   ensureColumn(db, "catalog_equipments", "updated_by_name", "TEXT NOT NULL DEFAULT ''");
 
+  // Prazo de devolução (empréstimos) e devolução de equipamento de terceiro ao dono.
+  ensureColumn(db, "movements", "due_at", "TEXT");
+  ensureColumn(db, "catalog_equipments", "owner_returned_at", "TEXT");
+  ensureColumn(db, "catalog_equipments", "owner_received_by", "TEXT NOT NULL DEFAULT ''");
+  ensureColumn(db, "catalog_equipments", "owner_returned_by_name", "TEXT NOT NULL DEFAULT ''");
+
   const missingUuids = db
     .prepare("SELECT id FROM catalog_equipments WHERE client_uuid IS NULL OR client_uuid = ''")
     .all() as Array<{ id: number }>;

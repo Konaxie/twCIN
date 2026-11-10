@@ -9,6 +9,7 @@ import {
   listCatalogEquipments,
   listCatalogLocations,
   listCatalogSectors,
+  returnEquipmentToOwner,
   updateCatalogEquipment
 } from "./catalogs.service.js";
 import { ConflictError, NotFoundError } from "./errors.js";
@@ -69,6 +70,17 @@ export function processSyncBatch(
             ipAddress
           );
           results.push({ op_id: op.op_id, status: "applied", record: updated });
+          break;
+        }
+        case "equipment.return_to_owner": {
+          const returned = returnEquipmentToOwner(
+            db,
+            { id: op.entity_id, clientUuid: op.client_uuid },
+            op.payload,
+            actor,
+            ipAddress
+          );
+          results.push({ op_id: op.op_id, status: "applied", record: returned });
           break;
         }
         case "movement.create": {

@@ -30,7 +30,8 @@ export const updateSettingsSchema = z.object({
         /^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(val),
       "Formato de imagem inválido. Use PNG, JPEG ou WebP."
     )
-    .optional()
+    .optional(),
+  loan_default_days: z.number().int().min(0, "Prazo inválido.").max(365, "O prazo máximo é de 365 dias.").optional()
 });
 
 export const changePasswordSchema = z.object({
@@ -85,7 +86,9 @@ export const createMovementSchema = z.object({
   install_location: z.string().trim().min(1, "Informe o local de instalação.").max(140),
   received_by: z.string().trim().max(120).optional().default(""),
   notes: z.string().trim().max(1000).optional().default(""),
-  out_at: isoDateTime("Data/hora de saída inválida.").optional()
+  out_at: isoDateTime("Data/hora de saída inválida.").optional(),
+  /** Prazo de devolução. Ausente = prazo padrão das configurações; null = sem prazo. */
+  due_at: isoDateTime("Prazo de devolução inválido.").nullable().optional()
 });
 
 export const updateMovementSchema = z.object({
@@ -100,6 +103,7 @@ export const updateMovementSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
   out_at: isoDateTime("Data/hora de saída inválida.").optional(),
   returned_at: isoDateTime("Data/hora de devolução inválida.").nullable().optional(),
+  due_at: isoDateTime("Prazo de devolução inválido.").nullable().optional(),
   status: movementStatusEnum.optional(),
   expected_version: z.number().int().positive().optional()
 });
@@ -117,8 +121,16 @@ export const equipmentConditionEnum = z.enum([
   "manutencao",
   "avaliacao",
   "emprestado",
-  "descartado"
+  "descartado",
+  "devolvido_dono"
 ]);
+
+export const returnToOwnerSchema = z.object({
+  returned_at: isoDateTime("Data/hora inválida.").optional(),
+  received_by: z.string().trim().min(1, "Informe quem recebeu o equipamento.").max(120),
+  notes: z.string().trim().max(1000).optional(),
+  expected_version: z.number().int().positive().optional()
+});
 
 export const createEquipmentSchema = z.object({
   client_uuid: z.string().uuid().optional(),
@@ -181,6 +193,13 @@ export const syncOperationSchema = z.discriminatedUnion("type", [
     entity_id: z.number().int().positive().optional(),
     client_uuid: z.string().uuid().optional(),
     payload: updateEquipmentSchema
+  }),
+  z.object({
+    op_id: z.string().min(1),
+    type: z.literal("equipment.return_to_owner"),
+    entity_id: z.number().int().positive().optional(),
+    client_uuid: z.string().uuid().optional(),
+    payload: returnToOwnerSchema
   }),
   z.object({
     op_id: z.string().min(1),
